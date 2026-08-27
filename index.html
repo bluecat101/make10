@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Make10 アプリ</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="container">
+    <h1>Make 10</h1>
+    
+    <!-- タブメニュー -->
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('play')">遊ぶ (ランダム)</button>
+        <button class="tab-btn" onclick="switchTab('search')">探す (自動解答)</button>
+    </div>
+
+    <!-- 1つ目: 遊ぶセクション -->
+    <div id="play-section" class="section active">
+        <p class="subtitle">数字タイルや演算子をクリックして数式を作ろう！</p>
+        
+        <div class="number-pool" id="number-pool">
+            <!-- 動的生成 -->
+        </div>
+
+        <div class="operator-pool">
+            <div class="op-btn" onclick="addExpression('+')">+</div>
+            <div class="op-btn" onclick="addExpression('-')">-</div>
+            <div class="op-btn" onclick="addExpression('*')">×</div>
+            <div class="op-btn" onclick="addExpression('/')">÷</div>
+            <div class="op-btn" onclick="addExpression('(')">(</div>
+            <div class="op-btn" onclick="addExpression(')')">)</div>
+        </div>
+
+        <div class="drop-zone" id="drop-zone">
+            <span class="placeholder-text" id="placeholder-text">ここをクリックまたはタップで数式を追加</span>
+        </div>
+
+        <button class="btn" onclick="checkAnswer()">判定する (=10？)</button>
+        <button class="btn btn-secondary" onclick="initPlayMode()">次の問題</button>
+
+        <div class="result-msg" id="play-result"></div>
+    </div>
+
+    <!-- 2つ目: 探すセクション -->
+    <div id="search-section" class="section">
+        <p class="subtitle">4つの数字を入力すると、10になる数式をすべて探します。</p>
+        
+        <div class="input-group">
+            <input type="number" id="s1" min="0" max="9" value="1">
+            <input type="number" id="s2" min="0" max="9" value="2">
+            <input type="number" id="s3" min="0" max="9" value="3">
+            <input type="number" id="s4" min="0" max="9" value="4">
+        </div>
+
+        <button class="btn" onclick="searchAnswers()">答えを探す</button>
+
+        <div class="answer-list" id="answer-list">
+            <div class="empty-hint">ここに結果が表示されます</div>
+        </div>
+    </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
