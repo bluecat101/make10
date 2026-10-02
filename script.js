@@ -1,203 +1,300 @@
-// タブ切り替え
+// --- Fraction（分数クラス：誤差対策） ---
+class Fraction {
+    /**
+     * Fraction constructor
+     * @param {*} n Numerator(分子)
+     * @param {*} d Denominator(分母)
+     */
+    constructor(n, d = 1) {
+        if (d === 0) throw new Error("ZeroDivisionError");
+        const g = gcd(Math.abs(n), Math.abs(d));
+        this.n = (d < 0 ? -n : n) / g;
+        this.d = Math.abs(d) / g;
+    }
+    add(o) { return new Fraction(this.n * o.d + o.n * this.d, this.d * o.d); }
+    sub(o) { return new Fraction(this.n * o.d - o.n * this.d, this.d * o.d); }
+    mul(o) { return new Fraction(this.n * o.n, this.d * o.d); }
+    div(o) { return new Fraction(this.n * o.d, this.d * o.n); }
+    equals(val) { return this.n === val * this.d; }
+    valueOf() { return this.n / this.d; }
+}
+
+function gcd(a, b) {
+    return b === 0 ? a : gcd(b, a % b);
+}
+
+// --- AST（数式ノード） ---
+class Node {
+    constructor(op, left, right) {
+        this.op = op;
+        this.left = left;
+        this.right = right;
+    }
+
+    evaluate() {
+        const l = typeof this.left === 'number' ? new Fraction(this.left) : this.left.evaluate();
+        const r = typeof this.right === 'number' ? new Fraction(this.right) : this.right.evaluate();
+        switch (this.op) {
+            case '+': return l.add(r);
+            case '-': return l.sub(r);
+            case '*': return l.mul(r);
+            case '/': return l.div(r);
+        }
+    }
+
+    // 表示用のきれいな文字列（最小限のカッコ）
+    toString(parentOp = '', isRight = false) {
+        let lStr = typeof this.left === 'number' ? this.left : this.left.toString(this.op, false);
+        let rStr = typeof this.right === 'number' ? this.right : this.right.toString(this.op, true);
+
+        let needParentheses = false;
+        const precedence = { '+': 1, '-': 1, '*': 2, '/': 2 };
+
+        if (parentOp && precedence[this.op] < precedence[parentOp]) {
+            needParentheses = true;
+        } else if (parentOp === '-' && (this.op === '+' || this.op === '-') && isRight) {
+            needParentheses = true;
+        } else if (parentOp === '/' && isRight) {
+            needParentheses = true;
+        }
+        const expr = `${lStr}${this.op}${rStr}`;
+        return needParentheses ? `(${expr})` : expr;
+    }
+
+    // --- 同値判定・重複排除のための正規化ロジック ---
+    toCanonical() {
+        return this.canonical();
+    }
+
+    canonical() {
+        const leftNorm = this.left instanceof Node ? this.left.canonical() : this.left;
+        const rightNorm = this.right instanceof Node ? this.right.canonical() : this.right;
+
+        if (this.op === '+' || this.op === '*') {
+            const terms = [];
+
+            const collect = (node) => {
+                if (node instanceof Node && node.op === this.op) {
+                    collect(node.left);
+                    collect(node.right);
+                } else {
+                    terms.push(node);
+                }
+            };
+            collect(new Node(this.op, leftNorm, rightNorm));
+
+            terms.sort((a, b) => {
+                const strA = a instanceof Node ? a.toCanonicalStringInternal() : String(a);
+                const strB = b instanceof Node ? b.toCanonicalStringInternal() : String(b);
+                return strA.localeCompare(strB);
+            });
+
+            let result = terms[0];
+            for (let i = 1; i < terms.length; i++) {
+                result = new Node(this.op, result, terms[i]);
+            }
+            return result;
+        }
+
+        return new Node(this.op, leftNorm, rightNorm);
+    }
+
+    // 内部正規化キー生成（必ずバッククォートを使うように修正）
+    toCanonicalStringInternal() {
+        const lStr = this.left instanceof Node ? this.left.toCanonicalStringInternal() : String(this.left);
+        const rStr = this.right instanceof Node ? this.right.toCanonicalStringInternal() : String(this.right);
+        return `(\`${lStr}\`${this.op}\`${rStr}\`)`;
+    }
+}
+
+// --- 順列生成（数字の並び替え） ---
+function permute(arr) {
+    if (arr.length <= 1) return [arr];
+    let result = [];
+    for (let i = 0; i < arr.length; i++) {
+        const current = arr[i];
+        const remaining = arr.slice(0, i).concat(arr.slice(i + 1));
+        for (let perm of permute(remaining)) {
+            result.push([current, ...perm]);
+        }
+    }
+    return result;
+}
+
+// --- 構文木の全パターン生成 ---
+function getExpressions(nums) {
+    if (nums.length === 1) return [nums[0]];
+    let results = [];
+    for (let i = 1; i < nums.length; i++) {
+        let lefts = getExpressions(nums.slice(0, i));
+        let rights = getExpressions(nums.slice(i));
+        for (let l of lefts) {
+            for (let r of rights) {
+                for (let op of ['+', '-', '*', '/']) {
+                    results.push(new Node(op, l, r));
+                }
+            }
+        }
+    }
+    return results;
+}
+
+// --- 探索ロジック（重複排除・可換性の整理） ---
+function solveMake10(inputNums) {
+    const uniqueCanonicalKeys = new Set();
+    const results = [];
+    const numPerms = permute(inputNums);
+
+    for (let nums of numPerms) {
+        const exprNodes = getExpressions(nums);
+        for (let node of exprNodes) {
+            try {
+                const ans = node.evaluate();
+                if (ans.equals(10)) {
+                    const canonicalNode = node.toCanonical();
+                    const nodeStr = canonicalNode.toString();
+                    if (!uniqueCanonicalKeys.has(nodeStr)) {
+                        uniqueCanonicalKeys.add(nodeStr);
+                        results.push(nodeStr);
+                    }
+                }
+            } catch (e) {
+                // ゼロ除算などはスキップ
+            }
+        }
+    }
+    console.log(uniqueCanonicalKeys);
+    return results;
+}
+
+
+// ==========================================
+// UI 操作の制御
+// ==========================================
+
+let currentNumbers = [];
+let expressionTokens = [];
+
+window.onload = () => {
+    initPlayMode();
+};
+
 function switchTab(tabName) {
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.section').forEach(sec => sec.classList.remove('active'));
 
     if (tabName === 'play') {
-        document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
+        document.querySelector('.tabs button:nth-child(1)').classList.add('active');
         document.getElementById('play-section').classList.add('active');
     } else {
-        document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
+        document.querySelector('.tabs button:nth-child(2)').classList.add('active');
         document.getElementById('search-section').classList.add('active');
     }
 }
 
-// --- 【遊ぶモードのロジック】 ---
-let currentNumbers = [];
-let currentExpression = [];
-
 function initPlayMode() {
-    currentNumbers = [];
-    for (let i = 0; i < 4; i++) {
-        currentNumbers.push(Math.floor(Math.random() * 9) + 1);
-    }
-    currentExpression = [];
-    renderPlayBoard();
+    currentNumbers = Array.from({length: 4}, () => Math.floor(Math.random() * 9) + 1);
+    expressionTokens = [];
+    updatePlayUI();
     document.getElementById('play-result').textContent = '';
 }
 
-function renderPlayBoard() {
+function updatePlayUI() {
     const pool = document.getElementById('number-pool');
     pool.innerHTML = '';
-    
     currentNumbers.forEach((num, index) => {
         const tile = document.createElement('div');
-        tile.className = 'tile';
+        tile.className = 'number-tile';
         tile.textContent = num;
-        tile.onclick = () => addNumberToExpression(num, index, tile);
+        tile.onclick = () => addExpression(num, index, tile);
         pool.appendChild(tile);
     });
 
-    renderExpression();
-}
-
-function addNumberToExpression(num, index, tileElement) {
-    if (currentExpression.some(i => i.type === 'num' && i.index === index)) return;
-    currentExpression.push({ type: 'num', val: num, index: index });
-    refreshPoolState();
-}
-
-function addExpression(val) {
-    currentExpression.push({ type: 'op', val: val });
-    renderExpression();
-}
-
-function renderExpression() {
-    const zone = document.getElementById('drop-zone');
-    zone.innerHTML = '';
-
-    if (currentExpression.length === 0) {
-        zone.innerHTML = '<span class="placeholder-text" id="placeholder-text">ここをクリックまたはタップで数式を追加</span>';
-        return;
+    const dropZone = document.getElementById('drop-zone');
+    dropZone.innerHTML = '';
+    if (expressionTokens.length === 0) {
+        dropZone.innerHTML = 'ここをクリックまたはタップで数式を追加';
+    } else {
+        expressionTokens.forEach((token, idx) => {
+            const span = document.createElement('span');
+            span.className = 'expr-token';
+            span.textContent = token.value;
+            span.onclick = () => removeToken(idx);
+            dropZone.appendChild(span);
+        });
     }
-
-    currentExpression.forEach((item, idx) => {
-        const span = document.createElement('div');
-        span.className = 'expression-item';
-        let displayVal = item.val;
-        if (displayVal === '*') displayVal = '×';
-        if (displayVal === '/') displayVal = '÷';
-        
-        span.innerHTML = `${displayVal} <span class="remove" onclick="removeExpression(${idx})">&times;</span>`;
-        zone.appendChild(span);
-    });
 }
 
-function refreshPoolState() {
-    const usedIndices = currentExpression.filter(i => i.type === 'num').map(i => i.index);
-    const tiles = document.querySelectorAll('#number-pool .tile');
-    tiles.forEach((tile, idx) => {
-        if (usedIndices.includes(idx)) {
-            tile.style.opacity = '0.3';
-            tile.style.pointerEvents = 'none';
-        } else {
-            tile.style.opacity = '1';
-            tile.style.pointerEvents = 'auto';
-        }
-    });
-    renderExpression();
+function addExpression(val, poolIndex = null, tileElement = null) {
+    expressionTokens.push({ value: val, poolIndex: poolIndex });
+    if (tileElement) {
+        tileElement.style.opacity = '0.4';
+        tileElement.style.pointerEvents = 'none';
+    }
+    updatePlayUI();
 }
 
-function removeExpression(idx) {
-    currentExpression.splice(idx, 1);
-    refreshPoolState();
+function removeToken(index) {
+    expressionTokens.splice(index, 1);
+    updatePlayUI();
 }
 
 function checkAnswer() {
     const resultMsg = document.getElementById('play-result');
-    const usedNums = currentExpression.filter(i => i.type === 'num');
-    if (usedNums.length !== 4) {
-        resultMsg.style.color = '#ef4444';
-        resultMsg.textContent = '4つの数字すべてを使ってください！';
+    const exprStr = expressionTokens.map(t => t.value).join(' ');
+
+    if (!exprStr.trim()) {
+        resultMsg.textContent = '数式を入力してください。';
+        resultMsg.style.color = '#e74c3c';
         return;
     }
 
-    const exprStr = currentExpression.map(i => i.val).join('');
     try {
-        const ans = Function('"use strict";return (' + exprStr + ')')();
-        if (Math.abs(ans - 10) < 1e-5) {
-            resultMsg.style.color = '#22c55e';
-            resultMsg.textContent = '🎉 正解です！お見事！';
+        const jsExpr = exprStr.replace(/×/g, '*').replace(/÷/g, '/');
+        const evaluated = eval(jsExpr);
+
+        if (Math.abs(evaluated - 10) < 1e-7) {
+            resultMsg.textContent = '正解です！おめでとうございます！ 🎉';
+            resultMsg.style.color = '#27ae60';
         } else {
-            resultMsg.style.color = '#ef4444';
-            resultMsg.textContent = `残念！ 計算結果は ${ans} です。`;
+            resultMsg.textContent = `残念！ 計算結果は ${evaluated} です（10ではありません）。`;
+            resultMsg.style.color = '#e74c3c';
         }
     } catch (e) {
-        resultMsg.style.color = '#ef4444';
         resultMsg.textContent = '数式の形式が正しくありません。';
+        resultMsg.style.color = '#e74c3c';
     }
 }
 
-// --- 【探すモードのロジック（自動計算）】 ---
 function searchAnswers() {
-    const n1 = parseInt(document.getElementById('s1').value);
-    const n2 = parseInt(document.getElementById('s2').value);
-    const n3 = parseInt(document.getElementById('s3').value);
-    const n4 = parseInt(document.getElementById('s4').value);
+    const s1 = parseInt(document.getElementById('s1').value);
+    const s2 = parseInt(document.getElementById('s2').value);
+    const s3 = parseInt(document.getElementById('s3').value);
+    const s4 = parseInt(document.getElementById('s4').value);
 
-    const nums = [n1, n2, n3, n4];
     const listContainer = document.getElementById('answer-list');
-    listContainer.innerHTML = '<div class="empty-hint">計算中...</div>';
+    listContainer.innerHTML = '検索中...';
 
     setTimeout(() => {
-        const answers = findAllMake10(nums);
-        listContainer.innerHTML = '';
-
-        if (answers.length === 0) {
-            listContainer.innerHTML = '<div style="color: #ef4444; text-align: center; padding: 20px;">10にできる組み合わせはありませんでした。</div>';
-            return;
-        }
+    const answers = solveMake10([s1, s2, s3, s4]);
+    console.log(answers);
+    listContainer.innerHTML = '';
+    if (answers.length === 0) {
+        listContainer.innerHTML = '10を作れる組み合わせはありませんでした。';
+    } else {
+        const countHeader = document.createElement('div');
+        countHeader.style.marginBottom = '10px';
+        countHeader.style.fontWeight = 'bold';
+        countHeader.textContent = `${answers.length}件の解答が見つかりました：`;
+        listContainer.appendChild(countHeader);
 
         answers.forEach(ans => {
-            const div = document.createElement('div');
-            div.className = 'answer-item';
-            div.textContent = ans.replace(/\*/g, '×').replace(/\//g, '÷') + ' = 10';
-            listContainer.appendChild(div);
+            const item = document.createElement('div');
+            item.className = 'answer-item';
+            item.textContent = ans.replace(/\*/g, '×').replace(/\//g, '÷');
+            console.log(ans.replace(/\*/g, '×').replace(/\//g, '÷'));
+            listContainer.appendChild(item);
         });
-    }, 50);
-}
-
-function permute(arr) {
-    if (arr.length <= 1) return [arr];
-    let res = [];
-    for (let i = 0; i < arr.length; i++) {
-        let current = arr[i];
-        let remaining = arr.slice(0, i).concat(arr.slice(i + 1));
-        let remainingPerms = permute(remaining);
-        for (let p of remainingPerms) {
-            res.push([current].concat(p));
-        }
     }
-    return res;
+    }, 10);
 }
-
-function findAllMake10(nums) {
-    let results = new Set();
-    const ops = ['+', '-', '*', '/'];
-    const numPerms = permute(nums);
-
-    const patterns = [
-        (a,b,c,d,o1,o2,o3) => `${a} ${o1} ${b} ${o2} ${c} ${o3} ${d}`,
-        (a,b,c,d,o1,o2,o3) => `(${a} ${o1} ${b}) ${o2} ${c} ${o3} ${d}`,
-        (a,b,c,d,o1,o2,o3) => `${a} ${o1} (${b} ${o2} ${c}) ${o3} ${d}`,
-        (a,b,c,d,o1,o2,o3) => `${a} ${o1} ${b} ${o2} (${c} ${o3} ${d})`,
-        (a,b,c,d,o1,o2,o3) => `(${a} ${o1} ${b} ${o2} ${c}) ${o3} ${d}`,
-        (a,b,c,d,o1,o2,o3) => `${a} ${o1} (${b} ${o2} ${c} ${o3} ${d})`,
-        (a,b,c,d,o1,o2,o3) => `(${a} ${o1} ${b}) ${o2} (${c} ${o3} ${d})`,
-        (a,b,c,d,o1,o2,o3) => `((${a} ${o1} ${b}) ${o2} ${c}) ${o3} ${d}`,
-        (a,b,c,d,o1,o2,o3) => `${a} ${o1} ((${b} ${o2} ${c}) ${o3} ${d})`
-    ];
-
-    for (let p of numPerms) {
-        let [a, b, c, d] = p;
-        for (let o1 of ops) {
-            for (let o2 of ops) {
-                for (let o3 of ops) {
-                    for (let fn of patterns) {
-                        let expr = fn(a, b, c, d, o1, o2, o3);
-                        try {
-                            let val = Function('"use strict";return (' + expr + ')')();
-                            if (Math.abs(val - 10) < 1e-5) {
-                                results.add(expr);
-                            }
-                        } catch (e) {}
-                    }
-                }
-            }
-        }
-    }
-    return Array.from(results);
-}
-
-// 初期化実行
-initPlayMode();
