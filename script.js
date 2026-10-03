@@ -23,87 +23,497 @@ function gcd(a, b) {
     return b === 0 ? a : gcd(b, a % b);
 }
 
-// --- AST（数式ノード） ---
+// ==========================================================
+// AST（数式ノード）
+// ==========================================================
+
 class Node {
+
     constructor(op, left, right) {
         this.op = op;
         this.left = left;
         this.right = right;
     }
 
+    // ======================================================
+    // 計算
+    // ======================================================
+
     evaluate() {
-        const l = typeof this.left === 'number' ? new Fraction(this.left) : this.left.evaluate();
-        const r = typeof this.right === 'number' ? new Fraction(this.right) : this.right.evaluate();
+
+        const l =
+            typeof this.left === 'number'
+                ? new Fraction(this.left)
+                : this.left.evaluate();
+
+        const r =
+            typeof this.right === 'number'
+                ? new Fraction(this.right)
+                : this.right.evaluate();
+
         switch (this.op) {
-            case '+': return l.add(r);
-            case '-': return l.sub(r);
-            case '*': return l.mul(r);
-            case '/': return l.div(r);
+            case '+':
+                return l.add(r);
+
+            case '-':
+                return l.sub(r);
+
+            case '*':
+                return l.mul(r);
+
+            case '/':
+                return l.div(r);
+
+            default:
+                throw new Error(`Unknown operator: ${this.op}`);
         }
     }
 
-    // 表示用のきれいな文字列（最小限のカッコ）
+
+    // ======================================================
+    // 表示用
+    // ======================================================
+
     toString(parentOp = '', isRight = false) {
-        let lStr = typeof this.left === 'number' ? this.left : this.left.toString(this.op, false);
-        let rStr = typeof this.right === 'number' ? this.right : this.right.toString(this.op, true);
+
+        const precedence = {
+            '+': 1,
+            '-': 1,
+            '*': 2,
+            '/': 2
+        };
+
+        const lStr =
+            typeof this.left === 'number'
+                ? String(this.left)
+                : this.left.toString(this.op, false);
+
+        const rStr =
+            typeof this.right === 'number'
+                ? String(this.right)
+                : this.right.toString(this.op, true);
 
         let needParentheses = false;
-        const precedence = { '+': 1, '-': 1, '*': 2, '/': 2 };
 
-        if (parentOp && precedence[this.op] < precedence[parentOp]) {
-            needParentheses = true;
-        } else if (parentOp === '-' && (this.op === '+' || this.op === '-') && isRight) {
-            needParentheses = true;
-        } else if (parentOp === '/' && isRight) {
+        // 親より優先順位が低い
+        if (
+            parentOp &&
+            precedence[this.op] < precedence[parentOp]
+        ) {
             needParentheses = true;
         }
+
+        // a-(b+c), a-(b-c)
+        else if (
+            parentOp === '-' &&
+            isRight &&
+            (this.op === '+' || this.op === '-')
+        ) {
+            needParentheses = true;
+        }
+
+        // a/(b*c), a/(b/c)
+        else if (
+            parentOp === '/' &&
+            isRight
+        ) {
+            needParentheses = true;
+        }
+
         const expr = `${lStr}${this.op}${rStr}`;
-        return needParentheses ? `(${expr})` : expr;
+
+        return needParentheses
+            ? `(${expr})`
+            : expr;
     }
 
-    // --- 同値判定・重複排除のための正規化ロジック ---
+
+    // ======================================================
+    // 代数的正規化
+    // ======================================================
+    //
+    // 「値が同じ」ではなく、
+    // 「代数的に同じ式」を同一視する。
+    //
+    // 例えば
+    //
+    //   3-(2-5-4)
+    //   3-(2-4-5)
+    //
+    // は両方
+    //
+    //   3-2+4+5
+    //
+    // なので同一。
+    //
+    // 一方、
+    //
+    //   1+2+3+4
+    //   2*3/1+4
+    //
+    // は値が同じでも別の式なので同一視しない。
+    //
+    // ======================================================
+
+    canonicalKey() {
+
+        const normalized = normalizeExpression(this);
+
+        return normalized.key();
+    }
+
+
+    // 旧コードとの互換用
     toCanonical() {
-        return this.canonical();
+        return this;
     }
 
+    // 旧コードとの互換用
     canonical() {
-        const leftNorm = this.left instanceof Node ? this.left.canonical() : this.left;
-        const rightNorm = this.right instanceof Node ? this.right.canonical() : this.right;
+        return this;
+    }
+}
 
-        if (this.op === '+' || this.op === '*') {
-            const terms = [];
 
-            const collect = (node) => {
-                if (node instanceof Node && node.op === this.op) {
-                    collect(node.left);
-                    collect(node.right);
-                } else {
-                    terms.push(node);
-                }
-            };
-            collect(new Node(this.op, leftNorm, rightNorm));
+// ==========================================================
+// 正規化用の内部表現
+// ==========================================================
+//
+// Expression
+//
+//   Add
+//      terms: [ Term, Term, ... ]
+//
+//   Mul
+//      factors: [ Expression, Expression, ... ]
+//
+//   Div
+//      numerator
+//      denominator
+//
+//   Neg
+//      value
+//
+//   Number
+//      value
+//
+// ==========================================================
 
-            terms.sort((a, b) => {
-                const strA = a instanceof Node ? a.toCanonicalStringInternal() : String(a);
-                const strB = b instanceof Node ? b.toCanonicalStringInternal() : String(b);
-                return strA.localeCompare(strB);
-            });
 
-            let result = terms[0];
-            for (let i = 1; i < terms.length; i++) {
-                result = new Node(this.op, result, terms[i]);
+function normalizeExpression(node) {
+
+    // ------------------------------------------------------
+    // 数字
+    // ------------------------------------------------------
+
+    if (typeof node === 'number') {
+
+        return new CanonicalNumber(node);
+    }
+
+
+    // ------------------------------------------------------
+    // 子を正規化
+    // ------------------------------------------------------
+
+    const left = normalizeExpression(node.left);
+    const right = normalizeExpression(node.right);
+
+
+    // ------------------------------------------------------
+    // +
+    // ------------------------------------------------------
+
+    if (node.op === '+') {
+
+        return CanonicalAdd.from(left, right);
+    }
+
+
+    // ------------------------------------------------------
+    // -
+    // ------------------------------------------------------
+
+    if (node.op === '-') {
+
+        return CanonicalAdd.from(
+            left,
+            new CanonicalNeg(right)
+        );
+    }
+
+
+    // ------------------------------------------------------
+    // *
+    // ------------------------------------------------------
+
+    if (node.op === '*') {
+
+        return CanonicalMul.from(left, right);
+    }
+
+
+    // ------------------------------------------------------
+    // /
+    // ------------------------------------------------------
+
+    if (node.op === '/') {
+
+        return CanonicalDiv.from(left, right);
+    }
+
+
+    throw new Error(`Unknown operator: ${node.op}`);
+}
+
+
+// ==========================================================
+// Number
+// ==========================================================
+
+class CanonicalNumber {
+
+    constructor(value) {
+        this.value = value;
+    }
+
+    key() {
+        return `N${this.value}`;
+    }
+}
+
+
+// ==========================================================
+// Neg
+// ==========================================================
+
+class CanonicalNeg {
+
+    constructor(value) {
+        this.value = value;
+    }
+
+    key() {
+        return `NEG(${this.value.key()})`;
+    }
+}
+
+
+// ==========================================================
+// Add
+// ==========================================================
+
+class CanonicalAdd {
+
+    constructor(terms) {
+
+        this.terms = [];
+
+        for (const term of terms) {
+
+            // 入れ子のADDを展開
+            if (term instanceof CanonicalAdd) {
+                this.terms.push(...term.terms);
+            } else {
+                this.terms.push(term);
             }
-            return result;
+        }
+    }
+
+
+    static from(a, b) {
+
+        const terms = [];
+
+        addTerm(terms, a, +1);
+        addTerm(terms, b, +1);
+
+        return new CanonicalAdd(terms);
+    }
+
+
+    key() {
+
+        const keys = this.terms.map(term => {
+
+            const sign =
+                term.sign === 1
+                    ? '+'
+                    : '-';
+
+            return `${sign}${term.value.key()}`;
+        });
+
+        // 加減算では項の順番を無視
+        keys.sort();
+
+        return `ADD(${keys.join(',')})`;
+    }
+}
+
+
+// ----------------------------------------------------------
+// ADDに項を追加
+// ----------------------------------------------------------
+
+function addTerm(terms, expr, sign) {
+
+    // --------------------------------------------
+    // ADD
+    // --------------------------------------------
+
+    if (expr instanceof CanonicalAdd) {
+
+        for (const term of expr.terms) {
+
+            terms.push({
+                sign: sign * term.sign,
+                value: term.value
+            });
         }
 
-        return new Node(this.op, leftNorm, rightNorm);
+        return;
     }
 
-    // 内部正規化キー生成（必ずバッククォートを使うように修正）
-    toCanonicalStringInternal() {
-        const lStr = this.left instanceof Node ? this.left.toCanonicalStringInternal() : String(this.left);
-        const rStr = this.right instanceof Node ? this.right.toCanonicalStringInternal() : String(this.right);
-        return `(\`${lStr}\`${this.op}\`${rStr}\`)`;
+
+    // --------------------------------------------
+    // NEG
+    // --------------------------------------------
+
+    if (expr instanceof CanonicalNeg) {
+
+        addTerm(
+            terms,
+            expr.value,
+            -sign
+        );
+
+        return;
+    }
+
+
+    // --------------------------------------------
+    // 通常の項
+    // --------------------------------------------
+
+    terms.push({
+        sign,
+        value: expr
+    });
+}
+
+
+// ==========================================================
+// Mul
+// ==========================================================
+
+class CanonicalMul {
+
+    constructor(factors) {
+
+        this.factors = [];
+
+        for (const factor of factors) {
+
+            // 入れ子のMULを展開
+            if (factor instanceof CanonicalMul) {
+                this.factors.push(...factor.factors);
+            } else {
+                this.factors.push(factor);
+            }
+        }
+    }
+
+
+    static from(a, b) {
+
+        const factors = [];
+
+        addFactor(factors, a);
+        addFactor(factors, b);
+
+        return new CanonicalMul(factors);
+    }
+
+
+    key() {
+
+        const keys =
+            this.factors
+                .map(f => f.key())
+                .sort();
+
+        return `MUL(${keys.join(',')})`;
+    }
+}
+
+
+// ----------------------------------------------------------
+// MULに因子を追加
+// ----------------------------------------------------------
+
+function addFactor(factors, expr) {
+
+    if (expr instanceof CanonicalMul) {
+
+        factors.push(...expr.factors);
+
+    } else {
+
+        factors.push(expr);
+    }
+}
+
+
+// ==========================================================
+// Div
+// ==========================================================
+
+class CanonicalDiv {
+
+    constructor(numerator, denominator) {
+
+        this.numerator = numerator;
+        this.denominator = denominator;
+    }
+
+
+    static from(a, b) {
+
+        // --------------------------------------------------
+        // A / (B / C)
+        //
+        // A / (B/C)
+        //      ↓
+        // A * C / B
+        //
+        // --------------------------------------------------
+
+        if (b instanceof CanonicalDiv) {
+
+            return new CanonicalDiv(
+
+                CanonicalMul.from(
+                    a,
+                    b.denominator
+                ),
+
+                b.numerator
+            );
+        }
+
+
+        // --------------------------------------------------
+        // A / B
+        // --------------------------------------------------
+
+        return new CanonicalDiv(a, b);
+    }
+
+
+    key() {
+
+        return `DIV(${this.numerator.key()},${this.denominator.key()})`;
     }
 }
 
@@ -139,31 +549,50 @@ function getExpressions(nums) {
     return results;
 }
 
-// --- 探索ロジック（重複排除・可換性の整理） ---
 function solveMake10(inputNums) {
+
     const uniqueCanonicalKeys = new Set();
     const results = [];
+
     const numPerms = permute(inputNums);
 
     for (let nums of numPerms) {
+
         const exprNodes = getExpressions(nums);
+
         for (let node of exprNodes) {
+
             try {
+
                 const ans = node.evaluate();
+
                 if (ans.equals(10)) {
-                    const canonicalNode = node.toCanonical();
-                    const nodeStr = canonicalNode.toString();
-                    if (!uniqueCanonicalKeys.has(nodeStr)) {
-                        uniqueCanonicalKeys.add(nodeStr);
-                        results.push(nodeStr);
+
+                    // --------------------------------------
+                    // ここが重要
+                    // --------------------------------------
+
+                    const canonicalKey =
+                        node.canonicalKey();
+
+                    if (!uniqueCanonicalKeys.has(canonicalKey)) {
+
+                        uniqueCanonicalKeys.add(canonicalKey);
+
+                        // 人間向けの式を保存
+                        results.push(
+                            node.toString()
+                        );
                     }
                 }
+
             } catch (e) {
-                // ゼロ除算などはスキップ
+
+                // 0除算などは無視
             }
         }
     }
-    console.log(uniqueCanonicalKeys);
+
     return results;
 }
 
