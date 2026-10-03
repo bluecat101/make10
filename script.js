@@ -377,36 +377,33 @@ class CanonicalMul {
   }
 
   static from(a, b) {
+    // ×1 は重複判定では無視
+    if (isCanonicalOne(a)) {
+      return b;
+    }
+
+    if (isCanonicalOne(b)) {
+      return a;
+    }
+
     const factors = [];
 
     addFactor(factors, a);
     addFactor(factors, b);
 
-    // DIV を分子・分母に分解
-    const numerator = [];
-    const denominator = [];
+    // ★ 入れ子を展開した後にも1を除外
+    const filteredFactors = factors.filter((f) => !isCanonicalOne(f));
 
-    for (const factor of factors) {
-      if (factor instanceof CanonicalDiv) {
-        numerator.push(factor.numerator);
-        denominator.push(factor.denominator);
-      } else {
-        numerator.push(factor);
-      }
+    // 1しか残らなかった場合
+    if (filteredFactors.length === 0) {
+      return new CanonicalNumber(1);
     }
 
-    // 分母がないなら通常の MUL
-    if (denominator.length === 0) {
-      return new CanonicalMul(numerator);
+    if (filteredFactors.length === 1) {
+      return filteredFactors[0];
     }
 
-    const num =
-      numerator.length === 1 ? numerator[0] : new CanonicalMul(numerator);
-
-    const den =
-      denominator.length === 1 ? denominator[0] : new CanonicalMul(denominator);
-
-    return new CanonicalDiv(num, den);
+    return new CanonicalMul(filteredFactors);
   }
 
   key() {
@@ -442,13 +439,11 @@ class CanonicalDiv {
   }
 
   static from(a, b) {
-    // X ÷ 1 → X
     if (isCanonicalOne(b)) {
       return a;
     }
 
     // A / (B / C)
-    // → A × C / B
     if (b instanceof CanonicalDiv) {
       return new CanonicalDiv(CanonicalMul.from(a, b.denominator), b.numerator);
     }
@@ -713,28 +708,90 @@ function searchAnswers() {
   const s4 = parseInt(document.getElementById("s4").value);
 
   const listContainer = document.getElementById("answer-list");
+
   listContainer.innerHTML = "検索中...";
 
   setTimeout(() => {
     const answers = solveMake10([s1, s2, s3, s4]);
-    console.log(answers);
-    listContainer.innerHTML = "";
-    if (answers.length === 0) {
-      listContainer.innerHTML = "10を作れる組み合わせはありませんでした。";
-    } else {
-      const countHeader = document.createElement("div");
-      countHeader.style.marginBottom = "10px";
-      countHeader.style.fontWeight = "bold";
-      countHeader.textContent = `${answers.length}件の解答が見つかりました：`;
-      listContainer.appendChild(countHeader);
 
-      answers.forEach((ans) => {
-        const item = document.createElement("div");
-        item.className = "answer-item";
-        item.textContent = ans.replace(/\*/g, "×").replace(/\//g, "÷");
-        console.log(ans.replace(/\*/g, "×").replace(/\//g, "÷"));
-        listContainer.appendChild(item);
-      });
+    console.log(answers);
+
+    listContainer.innerHTML = "";
+
+    // ==========================================
+    // 解答がない
+    // ==========================================
+
+    if (answers.length === 0) {
+      const result = document.createElement("div");
+
+      result.textContent = "10を作れる組み合わせはありません。";
+
+      listContainer.appendChild(result);
+
+      return;
     }
+
+    // ==========================================
+    // 解答がある
+    // ==========================================
+
+    const result = document.createElement("div");
+
+    result.style.marginBottom = "10px";
+    result.style.fontWeight = "bold";
+
+    result.textContent = `${answers.length}件の組み合わせがあります。`;
+
+    listContainer.appendChild(result);
+
+    // ==========================================
+    // 「解答を表示」ボタン
+    // ==========================================
+
+    const showButton = document.createElement("button");
+
+    showButton.className = "btn";
+    showButton.textContent = "解答を表示";
+
+    listContainer.appendChild(showButton);
+
+    // ==========================================
+    // 解答一覧
+    // 最初は非表示
+    // ==========================================
+
+    const answerArea = document.createElement("div");
+
+    answerArea.style.display = "none";
+    answerArea.style.marginTop = "10px";
+
+    answers.forEach((ans) => {
+      const item = document.createElement("div");
+
+      item.className = "answer-item";
+
+      item.textContent = ans.replace(/\*/g, "×").replace(/\//g, "÷");
+
+      answerArea.appendChild(item);
+
+      console.log(ans.replace(/\*/g, "×").replace(/\//g, "÷"));
+    });
+
+    listContainer.appendChild(answerArea);
+
+    // ==========================================
+    // ボタンを押したら表示 / 非表示
+    // ==========================================
+
+    showButton.onclick = () => {
+      if (answerArea.style.display === "none") {
+        answerArea.style.display = "block";
+        showButton.textContent = "解答を隠す";
+      } else {
+        answerArea.style.display = "none";
+        showButton.textContent = "解答を表示";
+      }
+    };
   }, 10);
 }
