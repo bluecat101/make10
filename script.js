@@ -614,11 +614,7 @@ function searchAnswers() {
 
   const numbers = [s1, s2, s3, s4];
 
-  if (
-    numbers.some(
-      (num) => !Number.isInteger(num) || num < 0 || num > 9
-    )
-  ) {
+  if (numbers.some((num) => !Number.isInteger(num) || num < 0 || num > 9)) {
     listContainer.innerHTML = "";
 
     const error = document.createElement("div");
@@ -716,9 +712,7 @@ function searchAnswers() {
 
       item.className = "answer-item";
 
-      item.textContent = ans
-        .replace(/\*/g, "×")
-        .replace(/\//g, "÷");
+      item.textContent = ans.replace(/\*/g, "×").replace(/\//g, "÷");
 
       answerArea.appendChild(item);
     });
