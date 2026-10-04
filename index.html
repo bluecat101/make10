@@ -1,41 +1,50 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Make10 Solver</title>
-    <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Make 10</title>
+
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
+
     <div class="container">
+
         <h1>Make 10</h1>
 
-        <p class="subtitle">4つの数字を使って、10になる数式を探します。</p>
+        <p class="subtitle">
+            4つの数字を入力すると、10になる数式を探します。
+        </p>
 
-        <section class="search-section">
-            <div class="input-group">
-                <input type="number" id="s1" min="0" max="9" value="1" aria-label="1つ目の数字" />
+        <div class="input-group">
+            <input type="number" id="s1" min="0" max="9" value="1">
+            <input type="number" id="s2" min="0" max="9" value="2">
+            <input type="number" id="s3" min="0" max="9" value="3">
+            <input type="number" id="s4" min="0" max="9" value="4">
+        </div>
 
-                <input type="number" id="s2" min="0" max="9" value="2" aria-label="2つ目の数字" />
+        <button class="btn" onclick="searchAnswers()">
+            答えを探す
+        </button>
 
-                <input type="number" id="s3" min="0" max="9" value="3" aria-label="3つ目の数字" />
-
-                <input type="number" id="s4" min="0" max="9" value="4" aria-label="4つ目の数字" />
+        <div class="answer-list" id="answer-list">
+            <div class="empty-hint">
+                ここに結果が表示されます
             </div>
+        </div>
 
-            <button class="btn" onclick="searchAnswers()">答えを探す</button>
-
-            <div class="answer-list" id="answer-list">
-                <div class="empty-hint">
-                    数字を入力して「答えを探す」を押してください。
-                </div>
-            </div>
-        </section>
     </div>
 
-    <script src="script.js"></script>
+    <!-- 計算・探索処理 -->
+    <script src="solver.js"></script>
+
+    <!-- 画面操作 -->
+    <script src="app.js"></script>
+
 </body>
 
 </html>
