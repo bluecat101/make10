@@ -597,135 +597,70 @@ function expandAddSub(node) {
 }
 
 // ==========================================
-// UI 操作の制御
+// 検索UI
 // ==========================================
 
-let currentNumbers = [];
-let expressionTokens = [];
-
-window.onload = () => {
-  initPlayMode();
-};
-
-function switchTab(tabName) {
-  document
-    .querySelectorAll(".tab-btn")
-    .forEach((btn) => btn.classList.remove("active"));
-  document
-    .querySelectorAll(".section")
-    .forEach((sec) => sec.classList.remove("active"));
-
-  if (tabName === "play") {
-    document.querySelector(".tabs button:nth-child(1)").classList.add("active");
-    document.getElementById("play-section").classList.add("active");
-  } else {
-    document.querySelector(".tabs button:nth-child(2)").classList.add("active");
-    document.getElementById("search-section").classList.add("active");
-  }
-}
-
-function initPlayMode() {
-  currentNumbers = Array.from(
-    { length: 4 },
-    () => Math.floor(Math.random() * 9) + 1,
-  );
-  expressionTokens = [];
-  updatePlayUI();
-  document.getElementById("play-result").textContent = "";
-}
-
-function updatePlayUI() {
-  const pool = document.getElementById("number-pool");
-  pool.innerHTML = "";
-  currentNumbers.forEach((num, index) => {
-    const tile = document.createElement("div");
-    tile.className = "number-tile";
-    tile.textContent = num;
-    tile.onclick = () => addExpression(num, index, tile);
-    pool.appendChild(tile);
-  });
-
-  const dropZone = document.getElementById("drop-zone");
-  dropZone.innerHTML = "";
-  if (expressionTokens.length === 0) {
-    dropZone.innerHTML = "ここをクリックまたはタップで数式を追加";
-  } else {
-    expressionTokens.forEach((token, idx) => {
-      const span = document.createElement("span");
-      span.className = "expr-token";
-      span.textContent = token.value;
-      span.onclick = () => removeToken(idx);
-      dropZone.appendChild(span);
-    });
-  }
-}
-
-function addExpression(val, poolIndex = null, tileElement = null) {
-  expressionTokens.push({ value: val, poolIndex: poolIndex });
-  if (tileElement) {
-    tileElement.style.opacity = "0.4";
-    tileElement.style.pointerEvents = "none";
-  }
-  updatePlayUI();
-}
-
-function removeToken(index) {
-  expressionTokens.splice(index, 1);
-  updatePlayUI();
-}
-
-function checkAnswer() {
-  const resultMsg = document.getElementById("play-result");
-  const exprStr = expressionTokens.map((t) => t.value).join(" ");
-
-  if (!exprStr.trim()) {
-    resultMsg.textContent = "数式を入力してください。";
-    resultMsg.style.color = "#e74c3c";
-    return;
-  }
-
-  try {
-    const jsExpr = exprStr.replace(/×/g, "*").replace(/÷/g, "/");
-    const evaluated = eval(jsExpr);
-
-    if (Math.abs(evaluated - 10) < 1e-7) {
-      resultMsg.textContent = "正解です！おめでとうございます！ 🎉";
-      resultMsg.style.color = "#27ae60";
-    } else {
-      resultMsg.textContent = `残念！ 計算結果は ${evaluated} です（10ではありません）。`;
-      resultMsg.style.color = "#e74c3c";
-    }
-  } catch (e) {
-    resultMsg.textContent = "数式の形式が正しくありません。";
-    resultMsg.style.color = "#e74c3c";
-  }
-}
-
 function searchAnswers() {
-  const s1 = parseInt(document.getElementById("s1").value);
-  const s2 = parseInt(document.getElementById("s2").value);
-  const s3 = parseInt(document.getElementById("s3").value);
-  const s4 = parseInt(document.getElementById("s4").value);
+  const s1 = parseInt(document.getElementById("s1").value, 10);
+  const s2 = parseInt(document.getElementById("s2").value, 10);
+  const s3 = parseInt(document.getElementById("s3").value, 10);
+  const s4 = parseInt(document.getElementById("s4").value, 10);
 
   const listContainer = document.getElementById("answer-list");
 
-  listContainer.innerHTML = "検索中...";
+  // ==========================================
+  // 入力チェック
+  // ==========================================
 
+  const numbers = [s1, s2, s3, s4];
+
+  if (
+    numbers.some(
+      (num) => !Number.isInteger(num) || num < 0 || num > 9
+    )
+  ) {
+    listContainer.innerHTML = "";
+
+    const error = document.createElement("div");
+    error.className = "empty-hint";
+    error.textContent = "0～9の数字を4つ入力してください。";
+
+    listContainer.appendChild(error);
+    return;
+  }
+
+  // ==========================================
+  // 検索中
+  // ==========================================
+
+  listContainer.innerHTML = "";
+
+  const searching = document.createElement("div");
+  searching.className = "empty-hint";
+  searching.textContent = "10を作れる数式があるか調べています……";
+
+  listContainer.appendChild(searching);
+
+  // 少し待ってから検索
+  // → 「検索中」の表示を画面に反映させる
   setTimeout(() => {
-    const answers = solveMake10([s1, s2, s3, s4]);
+    const answers = solveMake10(numbers);
 
-    console.log(answers);
+    // ==========================================
+    // 結果をクリア
+    // ==========================================
 
     listContainer.innerHTML = "";
 
     // ==========================================
-    // 解答がない
+    // 答えがない場合
     // ==========================================
 
     if (answers.length === 0) {
       const result = document.createElement("div");
 
-      result.textContent = "10を作れる組み合わせはありません。";
+      result.className = "empty-hint";
+      result.textContent = "10を作れる数式はありません。";
 
       listContainer.appendChild(result);
 
@@ -733,20 +668,18 @@ function searchAnswers() {
     }
 
     // ==========================================
-    // 解答がある
+    // 答えがある場合
     // ==========================================
 
     const result = document.createElement("div");
 
-    result.style.marginBottom = "10px";
-    result.style.fontWeight = "bold";
-
-    result.textContent = `${answers.length}件の組み合わせがあります。`;
+    result.className = "search-result";
+    result.textContent = "✓ 10を作れる数式があります！";
 
     listContainer.appendChild(result);
 
     // ==========================================
-    // 「解答を表示」ボタン
+    // 解答を表示ボタン
     // ==========================================
 
     const showButton = document.createElement("button");
@@ -763,25 +696,37 @@ function searchAnswers() {
 
     const answerArea = document.createElement("div");
 
+    answerArea.className = "answer-area";
     answerArea.style.display = "none";
-    answerArea.style.marginTop = "10px";
+
+    // 件数
+    const count = document.createElement("div");
+
+    count.className = "answer-count";
+    count.textContent = `${answers.length}件の答えがあります。`;
+
+    answerArea.appendChild(count);
+
+    // ==========================================
+    // 答えを追加
+    // ==========================================
 
     answers.forEach((ans) => {
       const item = document.createElement("div");
 
       item.className = "answer-item";
 
-      item.textContent = ans.replace(/\*/g, "×").replace(/\//g, "÷");
+      item.textContent = ans
+        .replace(/\*/g, "×")
+        .replace(/\//g, "÷");
 
       answerArea.appendChild(item);
-
-      console.log(ans.replace(/\*/g, "×").replace(/\//g, "÷"));
     });
 
     listContainer.appendChild(answerArea);
 
     // ==========================================
-    // ボタンを押したら表示 / 非表示
+    // 「解答を表示」ボタン
     // ==========================================
 
     showButton.onclick = () => {
